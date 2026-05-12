@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lagerverwaltung · StageMate</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f0f; --bg2: #181818; --bg3: #222;
+    --border: #2a2a2a; --border2: #333;
+    --text: #f0ede8; --muted: #888;
+    --accent: #F47F47; --accent2: #1a9e75; --accent3: #4a8fd4;
+    --danger: #c0392b; --yellow: #e8b84b;
+    --radius: 6px; --mono: 'DM Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; flex-shrink: 0; }
+  .main { flex: 1; overflow-y: auto; }
+  .logo { padding: 24px 20px 16px; border-bottom: 1px solid var(--border); }
+  .logo-mark { font-size: 11px; font-family: var(--mono); color: var(--accent); letter-spacing: 2px; text-transform: uppercase; }
+  .logo-name { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .conn-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin-left: 8px; vertical-align: middle; transition: background 0.3s; }
+  .conn-dot.ok { background: var(--accent2); }
+  .conn-dot.err { background: var(--danger); }
+  nav { padding: 12px 0; flex: 1; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 500; border-left: 2px solid transparent; transition: all 0.15s; user-select: none; }
+  .nav-item:hover { color: var(--text); background: var(--bg3); }
+  .nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(244,127,71,0.07); }
+  .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
+  .version { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .sync-info { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px; }
+  .page { display: none; padding: 32px; }
+  .page.active { display: block; }
+  .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; gap: 16px; flex-wrap: wrap; }
+  .page-title { font-size: 24px; font-weight: 700; }
+  .page-sub { font-size: 13px; color: var(--muted); margin-top: 4px; font-family: var(--mono); }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .stat-label { font-size: 11px; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .stat-val { font-size: 28px; font-weight: 700; margin-top: 6px; }
+  .stat-val.orange { color: var(--accent); }
+  .stat-val.green { color: var(--accent2); }
+  .stat-val.blue { color: var(--accent3); }
+  .stat-val.yellow { color: var(--yellow); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius); font-family: var(--sans); font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #e06832; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border2); }
+  .btn-ghost:hover { color: var(--text); background: var(--bg3); }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .btn-danger:hover { background: rgba(192,57,43,0.1); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .search-bar { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .search-input { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 7px 12px; color: var(--text); font-family: var(--sans); font-size: 13px; min-width: 200px; flex: 1; }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+  select.search-input { cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 12px 16px; font-size: 11px; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); }
+  td { padding: 11px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .mono { font-family: var(--mono); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-family: var(--mono); font-weight: 500; }
+  .badge-low { background: rgba(192,57,43,0.2); color: #e74c3c; }
+  .badge-ok { background: rgba(26,158,117,0.2); color: #2ecc71; }
+  .badge-mid { background: rgba(232,184,75,0.2); color: var(--yellow); }
+  .empty-state { text-align: center; padding: 40px; color: var(--muted); }
+  .empty-icon { font-size: 28px; margin-bottom: 10px; }
+  .actions { display: flex; gap: 6px; }
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100; align-items: center; justify-content: center; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: 10px; padding: 28px; width: 500px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+  .form-group { margin-bottom: 16px; }
+  label { display: block; font-size: 12px; font-family: var(--mono); color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select, textarea { width: 100%; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 9px 12px; color: var(--text); font-family: var(--sans); font-size: 13px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+  .dot-in { background: var(--accent2); }
+  .dot-out { background: var(--accent); }
+  .dot-korr { background: var(--yellow); }
+  .movement-type { display: inline-flex; align-items: center; gap: 6px; }
+  .slots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+  .slot-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .slot-name { font-size: 15px; font-weight: 600; }
+  .slot-zone { font-size: 11px; font-family: var(--mono); color: var(--muted); margin-top: 2px; }
+  .slot-bar-bg { background: var(--bg3); border-radius: 3px; height: 4px; margin-top: 12px; }
+  .slot-bar { height: 4px; border-radius: 3px; background: var(--accent2); }
+  .slot-bar.warn { background: var(--yellow); }
+  .slot-bar.full { background: var(--danger); }
+  .slot-cap { font-size: 11px; font-family: var(--mono); color: var(--muted); margin-top: 6px; }
+  .report-section { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+  .report-title { font-size: 11px; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .bar-label { font-size: 12px; width: 140px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; background: var(--bg3); border-radius: 3px; height: 8px; }
+  .bar-fill { height: 8px; border-radius: 3px; background: var(--accent); }
+  .bar-fill.green { background: var(--accent2); }
+  .bar-num { font-family: var(--mono); font-size: 12px; color: var(--muted); width: 40px; text-align: right; }
+  .tag { font-size: 11px; font-family: var(--mono); background: var(--bg3); border: 1px solid var(--border2); padding: 2px 7px; border-radius: 20px; color: var(--muted); }
+  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius); padding: 12px 18px; font-size: 13px; z-index: 999; opacity: 0; transform: translateY(10px); transition: all 0.25s; pointer-events: none; min-width: 220px; }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.success { border-color: var(--accent2); color: var(--accent2); }
+  #toast.error { border-color: var(--danger); color: #e74c3c; }
+  .loading { display: flex; align-items: center; gap: 10px; padding: 28px; color: var(--muted); font-family: var(--mono); font-size: 13px; }
+  .spinner { width: 16px; height: 16px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 680px) {
+    .sidebar { width: 52px; }
+    .nav-item span:last-child, .logo-mark, .logo-name, .sidebar-footer { display: none; }
+    .nav-item { justify-content: center; padding: 12px; }
+    .page { padding: 16px; }
+    .form-row { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">StageMate</div>
+      <div class="logo-name">Lager <span class="conn-dot" id="conn-dot" title="Verbindungsstatus"></span></div>
+    </div>
+    <nav>
+      <div class="nav-item active" onclick="showPage('dashboard')"><span>📊</span><span>Dashboard</span></div>
+      <div class="nav-item" onclick="showPage('artikel')"><span>📦</span><span>Artikel</span></div>
+      <div class="nav-item" onclick="showPage('bewegungen')"><span>🔄</span><span>Bewegungen</span></div>
+      <div class="nav-item" onclick="showPage('lagerplaetze')"><span>🗂️</span><span>Lagerplätze</span></div>
+      <div class="nav-item" onclick="showPage('berichte')"><span>📈</span><span>Berichte</span></div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="version">v2.0 · Supabase</div>
+      <div class="sync-info" id="last-sync">–</div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Dashboard</div>
+          <div class="page-sub" id="dash-date"></div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadAll()">↻ Aktualisieren</button>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Artikel gesamt</div><div class="stat-val orange" id="stat-artikel">–</div></div>
+        <div class="stat-card"><div class="stat-label">Gesamtbestand</div><div class="stat-val green" id="stat-bestand">–</div></div>
+        <div class="stat-card"><div class="stat-label">Lagerplätze</div><div class="stat-val blue" id="stat-slots">–</div></div>
+        <div class="stat-card"><div class="stat-label">Niedrig ⚠️</div><div class="stat-val yellow" id="stat-low">–</div></div>
+      </div>
+      <h3 style="font-size:11px;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;">Niedrige Bestände</h3>
+      <div class="table-wrap" style="margin-bottom:28px;">
+        <table><thead><tr><th>Nr.</th><th>Name</th><th>Kategorie</th><th>Bestand</th><th>Mindest</th></tr></thead>
+        <tbody id="low-stock-body"><tr><td colspan="5"><div class="loading"><div class="spinner"></div>Verbinde mit Datenbank…</div></td></tr></tbody></table>
+      </div>
+      <h3 style="font-size:11px;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;">Letzte Bewegungen</h3>
+      <div class="table-wrap">
+        <table><thead><tr><th>Zeitpunkt</th><th>Artikel</th><th>Typ</th><th>Menge</th><th>Notiz</th></tr></thead>
+        <tbody id="recent-movements-body"><tr><td colspan="5"><div class="loading"><div class="spinner"></div>Lade…</div></td></tr></tbody></table>
+      </div>
+    </div>
+
+    <!-- ARTIKEL -->
+    <div class="page" id="page-artikel">
+      <div class="page-header">
+        <div><div class="page-title">Artikel</div><div class="page-sub">Bestände verwalten</div></div>
+        <button class="btn btn-primary" onclick="openModal('artikel')">+ Neuer Artikel</button>
+      </div>
+      <div class="table-wrap">
+        <div class="search-bar">
+          <input class="search-input" type="text" placeholder="Name, Nr. oder Kategorie suchen…" oninput="filterArtikel()" id="artikel-search">
+          <select class="search-input" style="flex:0;min-width:150px;" onchange="filterArtikel()" id="kat-filter"><option value="">Alle Kategorien</option></select>
+        </div>
+        <table>
+          <thead><tr><th>Nr.</th><th>Name</th><th>Kategorie</th><th>Lagerplatz</th><th>Bestand</th><th>Status</th><th>Aktionen</th></tr></thead>
+          <tbody id="artikel-body"><tr><td colspan="7"><div class="loading"><div class="spinner"></div>Lade…</div></td></tr></tbody>
+        </table>
+        <div class="empty-state" id="artikel-empty" style="display:none;"><div class="empty-icon">📦</div><div>Noch keine Artikel angelegt</div><div style="font-size:12px;margin-top:6px">Klicke auf „Neuer Artikel"</div></div>
+      </div>
+    </div>
+
+    <!-- BEWEGUNGEN -->
+    <div class="page" id="page-bewegungen">
+      <div class="page-header">
+        <div><div class="page-title">Bewegungen</div><div class="page-sub">Ein- & Auslagerungen</div></div>
+        <button class="btn btn-primary" onclick="openModal('bewegung')">+ Bewegung erfassen</button>
+      </div>
+      <div class="table-wrap">
+        <div class="search-bar">
+          <input class="search-input" type="text" placeholder="Suchen…" oninput="filterBewegungen()" id="bew-search">
+          <select class="search-input" style="flex:0;min-width:150px;" onchange="filterBewegungen()" id="bew-type-filter">
+            <option value="">Alle Typen</option>
+            <option value="einlagerung">Einlagerung</option>
+            <option value="auslagerung">Auslagerung</option>
+            <option value="korrektur">Korrektur</option>
+          </select>
+        </div>
+        <table>
+          <thead><tr><th>Datum</th><th>Artikel</th><th>Typ</th><th>Menge</th><th>Lagerplatz</th><th>Notiz</th></tr></thead>
+          <tbody id="bewegungen-body"><tr><td colspan="6"><div class="loading"><div class="spinner"></div>Lade…</div></td></tr></tbody>
+        </table>
+        <div class="empty-state" id="bewegungen-empty" style="display:none;"><div class="empty-icon">🔄</div><div>Keine Bewegungen erfasst</div></div>
+      </div>
+    </div>
+
+    <!-- LAGERPLÄTZE -->
+    <div class="page" id="page-lagerplaetze">
+      <div class="page-header">
+        <div><div class="page-title">Lagerplätze</div><div class="page-sub">Zonen & Kapazitäten</div></div>
+        <button class="btn btn-primary" onclick="openModal('slot')">+ Neuer Platz</button>
+      </div>
+      <div class="slots-grid" id="slots-grid"></div>
+      <div class="empty-state" id="slots-empty" style="display:none;"><div class="empty-icon">🗂️</div><div>Keine Lagerplätze definiert</div></div>
+    </div>
+
+    <!-- BERICHTE -->
+    <div class="page" id="page-berichte">
+      <div class="page-header">
+        <div><div class="page-title">Berichte</div><div class="page-sub">Auswertungen & Export</div></div>
+        <button class="btn btn-ghost" onclick="exportCSV()">⬇ CSV Export</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div class="report-section"><div class="report-title">Bestand nach Kategorie</div><div id="chart-kat"></div></div>
+        <div class="report-section"><div class="report-title">Top 5 Artikel (Bestand)</div><div id="chart-top"></div></div>
+      </div>
+      <div class="report-section"><div class="report-title">Bewegungen letzte 30 Tage</div><div id="chart-movement"></div></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MODAL ARTIKEL -->
+<div class="modal-bg" id="modal-artikel">
+  <div class="modal">
+    <div class="modal-title" id="modal-artikel-title">Neuer Artikel</div>
+    <div class="form-row">
+      <div class="form-group"><label>Artikel-Nr.</label><input type="text" id="f-nr" placeholder="ART-001"></div>
+      <div class="form-group"><label>Name *</label><input type="text" id="f-name" placeholder="z.B. Kabeltrommel 50m"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Kategorie</label><input type="text" id="f-kat" placeholder="Technik, Mobiliar…" list="kat-list"><datalist id="kat-list"></datalist></div>
+      <div class="form-group"><label>Einheit</label><input type="text" id="f-einheit" value="Stück"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Aktueller Bestand</label><input type="number" id="f-bestand" min="0" value="0"></div>
+      <div class="form-group"><label>Mindestbestand</label><input type="number" id="f-mindest" min="0" value="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Lagerplatz</label><select id="f-slot"><option value="">– kein Platz –</option></select></div>
+      <div class="form-group"><label>Wert / Einheit (€)</label><input type="number" id="f-wert" min="0" step="0.01" value="0"></div>
+    </div>
+    <div class="form-group"><label>Notiz</label><textarea id="f-notiz" rows="2" placeholder="Optional…"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('artikel')">Abbrechen</button>
+      <button class="btn btn-primary" id="btn-save-artikel" onclick="saveArtikel()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL BEWEGUNG -->
+<div class="modal-bg" id="modal-bewegung">
+  <div class="modal">
+    <div class="modal-title">Bewegung erfassen</div>
+    <div class="form-group"><label>Artikel *</label><select id="b-artikel"><option value="">– Artikel wählen –</option></select></div>
+    <div class="form-row">
+      <div class="form-group"><label>Typ</label>
+        <select id="b-typ">
+          <option value="einlagerung">Einlagerung (+)</option>
+          <option value="auslagerung">Auslagerung (–)</option>
+          <option value="korrektur">Korrektur (absolut)</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Menge</label><input type="number" id="b-menge" min="1" value="1"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Datum & Uhrzeit</label><input type="datetime-local" id="b-datum"></div>
+      <div class="form-group"><label>Lagerplatz</label><select id="b-slot"><option value="">– automatisch –</option></select></div>
+    </div>
+    <div class="form-group"><label>Notiz / Grund</label><input type="text" id="b-notiz" placeholder="z.B. Messe Frankfurt, Inventur…"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('bewegung')">Abbrechen</button>
+      <button class="btn btn-primary" id="btn-save-bew" onclick="saveBewegung()">Erfassen</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SLOT -->
+<div class="modal-bg" id="modal-slot">
+  <div class="modal">
+    <div class="modal-title" id="modal-slot-title">Neuer Lagerplatz</div>
+    <div class="form-row">
+      <div class="form-group"><label>Name *</label><input type="text" id="s-name" placeholder="z.B. Regal A1, LKW 1…"></div>
+      <div class="form-group"><label>Zone</label><input type="text" id="s-zone" placeholder="Halle A, Außen…"></div>
+    </div>
+    <div class="form-group"><label>Kapazität (Einheiten)</label><input type="number" id="s-kap" min="1" value="100"></div>
+    <div class="form-group"><label>Notiz</label><input type="text" id="s-notiz" placeholder="Optional…"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('slot')">Abbrechen</button>
+      <button class="btn btn-primary" id="btn-save-slot" onclick="saveSlot()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const SUPA_URL = 'https://ymggvjccjsqqwzbtkpni.supabase.co';
+const SUPA_KEY = 'sb_publishable_lVQN_HVMRXj7rwcT2oqj3Q_TPDuuDcz';
+const H = {
+  'apikey': SUPA_KEY,
+  'Authorization': 'Bearer ' + SUPA_KEY,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=representation'
+};
+
+let artikel = [], bewegungen = [], slots = [];
+let editId = null;
+
+async function sb(path, method='GET', body=null) {
+  const opts = { method, headers: H };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(SUPA_URL + '/rest/v1/' + path, opts);
+  if (!r.ok) { const e = await r.json().catch(()=>({message:r.status})); throw new Error(e.message || r.status); }
+  if (method === 'DELETE' || r.status === 204) return null;
+  return r.json();
+}
+
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+function setConn(ok) { document.getElementById('conn-dot').className = 'conn-dot ' + (ok?'ok':'err'); }
+function setSync() { document.getElementById('last-sync').textContent = 'Sync ' + new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); }
+
+async function loadAll() {
+  try {
+    [slots, artikel, bewegungen] = await Promise.all([
+      sb('slots?order=name'),
+      sb('artikel?order=name'),
+      sb('bewegungen?order=datum.desc&limit=500')
+    ]);
+    setConn(true); setSync(); render();
+  } catch(e) {
+    setConn(false);
+    toast('Verbindungsfehler: ' + e.message, 'error');
+  }
+}
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  ['dashboard','artikel','bewegungen','lagerplaetze','berichte'].forEach((p,i) => {
+    if(p===id) document.querySelectorAll('.nav-item')[i].classList.add('active');
+  });
+}
+
+function toast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show ' + type;
+  clearTimeout(t._t); t._t = setTimeout(() => t.className='', 3000);
+}
+
+function openModal(which) {
+  editId = null;
+  if(which==='artikel') {
+    document.getElementById('modal-artikel-title').textContent = 'Neuer Artikel';
+    ['f-nr','f-name','f-kat','f-notiz'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('f-einheit').value = 'Stück';
+    document.getElementById('f-bestand').value = 0;
+    document.getElementById('f-mindest').value = 0;
+    document.getElementById('f-wert').value = 0;
+    fillSel('f-slot', slots, '– kein Platz –', '');
+    fillKatDL();
+  }
+  if(which==='bewegung') {
+    fillSel('b-artikel', artikel.map(a=>({id:a.id,name:'['+a.nr+'] '+a.name})), '– Artikel wählen –', '');
+    fillSel('b-slot', slots, '– automatisch –', '');
+    document.getElementById('b-typ').value = 'einlagerung';
+    document.getElementById('b-menge').value = 1;
+    document.getElementById('b-notiz').value = '';
+    const n = new Date(); n.setMinutes(n.getMinutes()-n.getTimezoneOffset());
+    document.getElementById('b-datum').value = n.toISOString().slice(0,16);
+  }
+  if(which==='slot') {
+    document.getElementById('modal-slot-title').textContent = 'Neuer Lagerplatz';
+    ['s-name','s-zone','s-notiz'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('s-kap').value = 100;
+  }
+  document.getElementById('modal-'+which).classList.add('open');
+}
+function closeModal(w) { document.getElementById('modal-'+w).classList.remove('open'); editId=null; }
+document.querySelectorAll('.modal-bg').forEach(bg => bg.addEventListener('click', e => { if(e.target===bg) bg.classList.remove('open'); }));
+
+function fillSel(id, items, ph, cur) {
+  const s = document.getElementById(id);
+  s.innerHTML = `<option value="">${ph}</option>` + items.map(i=>`<option value="${i.id}"${i.id===cur?' selected':''}>${i.name}</option>`).join('');
+}
+function fillKatDL() {
+  const cats = [...new Set(artikel.map(a=>a.kategorie).filter(Boolean))];
+  document.getElementById('kat-list').innerHTML = cats.map(c=>`<option value="${c}">`).join('');
+}
+function setBtnLoad(id, loading) {
+  const b = document.getElementById(id);
+  if(!b) return;
+  b.disabled = loading;
+  b.textContent = loading ? '…' : 'Speichern';
+}
+
+async function saveArtikel() {
+  const name = document.getElementById('f-name').value.trim();
+  if(!name) { toast('Name ist Pflichtfeld','error'); return; }
+  setBtnLoad('btn-save-artikel', true);
+  const bestand = parseInt(document.getElementById('f-bestand').value)||0;
+  const data = {
+    nr: document.getElementById('f-nr').value.trim() || ('ART-'+(artikel.length+1).toString().padStart(3,'0')),
+    name,
+    kategorie: document.getElementById('f-kat').value.trim()||null,
+    einheit: document.getElementById('f-einheit').value.trim()||'Stück',
+    bestand,
+    mindest: parseInt(document.getElementById('f-mindest').value)||0,
+    slot_id: document.getElementById('f-slot').value||null,
+    wert: parseFloat(document.getElementById('f-wert').value)||0,
+    notiz: document.getElementById('f-notiz').value.trim()||null
+  };
+  try {
+    if(editId) {
+      const old = artikel.find(a=>a.id===editId);
+      await sb('artikel?id=eq.'+editId, 'PATCH', data);
+      if(old && old.bestand !== bestand) {
+        await sb('bewegungen','POST',{id:genId(),artikel_id:editId,typ:'korrektur',menge:bestand,slot_id:data.slot_id,datum:new Date().toISOString(),notiz:'Bestandskorrektur via Artikelbearbeitung'});
+      }
+      toast('Artikel aktualisiert ✓');
+    } else {
+      const id = genId();
+      await sb('artikel','POST',{...data,id,erstellt:new Date().toISOString()});
+      if(bestand>0) await sb('bewegungen','POST',{id:genId(),artikel_id:id,typ:'einlagerung',menge:bestand,slot_id:data.slot_id,datum:new Date().toISOString(),notiz:'Erster Bestand bei Anlage'});
+      toast('Artikel angelegt ✓');
+    }
+    closeModal('artikel'); await loadAll();
+  } catch(e) { toast('Fehler: '+e.message,'error'); }
+  setBtnLoad('btn-save-artikel', false);
+}
+
+function editArtikel(id) {
+  const a = artikel.find(x=>x.id===id); if(!a) return;
+  editId = id;
+  document.getElementById('modal-artikel-title').textContent = 'Artikel bearbeiten';
+  document.getElementById('f-nr').value = a.nr||'';
+  document.getElementById('f-name').value = a.name;
+  document.getElementById('f-kat').value = a.kategorie||'';
+  document.getElementById('f-einheit').value = a.einheit||'Stück';
+  document.getElementById('f-bestand').value = a.bestand;
+  document.getElementById('f-mindest').value = a.mindest||0;
+  document.getElementById('f-wert').value = a.wert||0;
+  document.getElementById('f-notiz').value = a.notiz||'';
+  fillSel('f-slot', slots, '– kein Platz –', a.slot_id||'');
+  fillKatDL();
+  document.getElementById('modal-artikel').classList.add('open');
+}
+
+async function deleteArtikel(id) {
+  if(!confirm('Artikel und alle zugehörigen Bewegungen löschen?')) return;
+  try {
+    await sb('bewegungen?artikel_id=eq.'+id,'DELETE');
+    await sb('artikel?id=eq.'+id,'DELETE');
+    toast('Artikel gelöscht'); await loadAll();
+  } catch(e) { toast('Fehler: '+e.message,'error'); }
+}
+
+async function saveBewegung() {
+  const artikelId = document.getElementById('b-artikel').value;
+  if(!artikelId) { toast('Artikel wählen','error'); return; }
+  const typ = document.getElementById('b-typ').value;
+  const menge = parseInt(document.getElementById('b-menge').value)||1;
+  if(menge<=0) { toast('Menge muss > 0 sein','error'); return; }
+  const a = artikel.find(x=>x.id===artikelId); if(!a) return;
+  setBtnLoad('btn-save-bew', true);
+  let newBestand = a.bestand;
+  if(typ==='einlagerung') newBestand += menge;
+  else if(typ==='auslagerung') {
+    if(a.bestand < menge) { toast('Nicht genug Bestand! Verfügbar: '+a.bestand+' '+a.einheit,'error'); setBtnLoad('btn-save-bew',false); return; }
+    newBestand -= menge;
+  } else { newBestand = menge; }
+  const slotId = document.getElementById('b-slot').value || a.slot_id || null;
+  const datum = new Date(document.getElementById('b-datum').value||new Date()).toISOString();
+  try {
+    await sb('artikel?id=eq.'+artikelId,'PATCH',{bestand:newBestand});
+    await sb('bewegungen','POST',{id:genId(),artikel_id:artikelId,typ,menge,slot_id:slotId,datum,notiz:document.getElementById('b-notiz').value.trim()||null});
+    toast(typ==='einlagerung'?'Eingelagert ✓':typ==='auslagerung'?'Ausgelagert ✓':'Korrektur gespeichert ✓');
+    closeModal('bewegung'); await loadAll();
+  } catch(e) { toast('Fehler: '+e.message,'error'); }
+  setBtnLoad('btn-save-bew', false);
+}
+
+async function saveSlot() {
+  const name = document.getElementById('s-name').value.trim();
+  if(!name) { toast('Name Pflichtfeld','error'); return; }
+  setBtnLoad('btn-save-slot', true);
+  const data = { name, zone:document.getElementById('s-zone').value.trim()||null, kapazitaet:parseInt(document.getElementById('s-kap').value)||100, notiz:document.getElementById('s-notiz').value.trim()||null };
+  try {
+    if(editId) { await sb('slots?id=eq.'+editId,'PATCH',data); toast('Lagerplatz aktualisiert ✓'); }
+    else { await sb('slots','POST',{...data,id:genId(),erstellt:new Date().toISOString()}); toast('Lagerplatz angelegt ✓'); }
+    closeModal('slot'); await loadAll();
+  } catch(e) { toast('Fehler: '+e.message,'error'); }
+  setBtnLoad('btn-save-slot', false);
+}
+
+function editSlot(id) {
+  const s = slots.find(x=>x.id===id); if(!s) return;
+  editId = id;
+  document.getElementById('modal-slot-title').textContent = 'Lagerplatz bearbeiten';
+  document.getElementById('s-name').value = s.name;
+  document.getElementById('s-zone').value = s.zone||'';
+  document.getElementById('s-kap').value = s.kapazitaet;
+  document.getElementById('s-notiz').value = s.notiz||'';
+  document.getElementById('modal-slot').classList.add('open');
+}
+
+async function deleteSlot(id) {
+  if(!confirm('Lagerplatz löschen? Zugewiesene Artikel werden losgelöst.')) return;
+  try {
+    await sb('artikel?slot_id=eq.'+id,'PATCH',{slot_id:null});
+    await sb('slots?id=eq.'+id,'DELETE');
+    toast('Lagerplatz gelöscht'); await loadAll();
+  } catch(e) { toast('Fehler: '+e.message,'error'); }
+}
+
+function getSlotName(id) { const s=slots.find(x=>x.id===id); return s?s.name:'–'; }
+function getArtikelName(id) { const a=artikel.find(x=>x.id===id); return a?'['+a.nr+'] '+a.name:'–'; }
+function fmtDate(iso) { return new Date(iso).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function statusBadge(a) {
+  if(a.bestand===0) return '<span class="badge badge-low">leer</span>';
+  if(a.mindest>0&&a.bestand<=a.mindest) return '<span class="badge badge-low">niedrig</span>';
+  if(a.mindest>0&&a.bestand<=a.mindest*1.5) return '<span class="badge badge-mid">knapp</span>';
+  return '<span class="badge badge-ok">ok</span>';
+}
+function slotBestand(id) { return artikel.filter(a=>a.slot_id===id).reduce((s,a)=>s+a.bestand,0); }
+
+function render() { renderDash(); renderArtikel(); renderBewegungen(); renderSlots(); renderBerichte(); }
+
+function renderDash() {
+  document.getElementById('stat-artikel').textContent = artikel.length;
+  document.getElementById('stat-bestand').textContent = artikel.reduce((s,a)=>s+a.bestand,0);
+  document.getElementById('stat-slots').textContent = slots.length;
+  const low = artikel.filter(a=>a.mindest>0&&a.bestand<=a.mindest);
+  document.getElementById('stat-low').textContent = low.length;
+  document.getElementById('low-stock-body').innerHTML = low.length
+    ? low.map(a=>`<tr>
+        <td class="mono" style="color:var(--muted)">${a.nr||'–'}</td>
+        <td><b>${a.name}</b></td>
+        <td>${a.kategorie?'<span class="tag">'+a.kategorie+'</span>':'–'}</td>
+        <td style="color:${a.bestand===0?'var(--danger)':'var(--yellow)'}"><b>${a.bestand}</b> ${a.einheit}</td>
+        <td class="mono" style="color:var(--muted)">${a.mindest} ${a.einheit}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5"><div class="empty-state" style="padding:16px">✓ Alle Bestände in Ordnung</div></td></tr>';
+  const recent = bewegungen.slice(0,8);
+  document.getElementById('recent-movements-body').innerHTML = recent.length
+    ? recent.map(m=>`<tr>
+        <td class="mono" style="font-size:12px;color:var(--muted)">${fmtDate(m.datum)}</td>
+        <td>${getArtikelName(m.artikel_id)}</td>
+        <td><span class="movement-type"><span class="dot dot-${m.typ==='einlagerung'?'in':m.typ==='auslagerung'?'out':'korr'}"></span>${m.typ}</span></td>
+        <td class="mono">${m.menge}</td>
+        <td style="color:var(--muted);font-size:12px">${m.notiz||'–'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5"><div class="empty-state" style="padding:16px">Noch keine Bewegungen</div></td></tr>';
+}
+
+function renderArtikel() {
+  const q = (document.getElementById('artikel-search').value||'').toLowerCase();
+  const kat = document.getElementById('kat-filter').value;
+  const cats = [...new Set(artikel.map(a=>a.kategorie).filter(Boolean))];
+  const katSel = document.getElementById('kat-filter');
+  const curKat = katSel.value;
+  katSel.innerHTML = '<option value="">Alle Kategorien</option>' + cats.map(k=>`<option value="${k}"${k===curKat?' selected':''}>${k}</option>`).join('');
+  const list = artikel.filter(a =>
+    (!q || a.name.toLowerCase().includes(q) || (a.nr||'').toLowerCase().includes(q) || (a.kategorie||'').toLowerCase().includes(q)) &&
+    (!kat || a.kategorie===kat)
+  );
+  const body = document.getElementById('artikel-body');
+  const empty = document.getElementById('artikel-empty');
+  if(!list.length) { body.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  body.innerHTML = list.map(a=>`<tr>
+    <td class="mono" style="color:var(--muted)">${a.nr||'–'}</td>
+    <td><b>${a.name}</b>${a.notiz?'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+a.notiz+'</div>':''}</td>
+    <td>${a.kategorie?'<span class="tag">'+a.kategorie+'</span>':'–'}</td>
+    <td style="font-size:12px;color:var(--muted)">${a.slot_id?getSlotName(a.slot_id):'–'}</td>
+    <td class="mono"><b>${a.bestand}</b> <span style="color:var(--muted);font-size:11px">${a.einheit}</span></td>
+    <td>${statusBadge(a)}</td>
+    <td><div class="actions">
+      <button class="btn btn-ghost btn-sm" onclick="editArtikel('${a.id}')">✏️</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteArtikel('${a.id}')">🗑</button>
+    </div></td>
+  </tr>`).join('');
+}
+function filterArtikel() { renderArtikel(); }
+
+function renderBewegungen() {
+  const q = (document.getElementById('bew-search').value||'').toLowerCase();
+  const typ = document.getElementById('bew-type-filter').value;
+  const list = bewegungen.filter(m =>
+    (!q || getArtikelName(m.artikel_id).toLowerCase().includes(q) || (m.notiz||'').toLowerCase().includes(q)) &&
+    (!typ || m.typ===typ)
+  );
+  const body = document.getElementById('bewegungen-body');
+  const empty = document.getElementById('bewegungen-empty');
+  if(!list.length) { body.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  body.innerHTML = list.map(m=>`<tr>
+    <td class="mono" style="font-size:12px;color:var(--muted)">${fmtDate(m.datum)}</td>
+    <td>${getArtikelName(m.artikel_id)}</td>
+    <td><span class="movement-type"><span class="dot dot-${m.typ==='einlagerung'?'in':m.typ==='auslagerung'?'out':'korr'}"></span>${m.typ}</span></td>
+    <td class="mono" style="color:${m.typ==='einlagerung'?'var(--accent2)':m.typ==='auslagerung'?'var(--accent)':'var(--muted)'}">
+      ${m.typ==='einlagerung'?'+':m.typ==='auslagerung'?'–':'='}${m.menge}
+    </td>
+    <td style="font-size:12px;color:var(--muted)">${m.slot_id?getSlotName(m.slot_id):'–'}</td>
+    <td style="font-size:12px;color:var(--muted)">${m.notiz||'–'}</td>
+  </tr>`).join('');
+}
+function filterBewegungen() { renderBewegungen(); }
+
+function renderSlots() {
+  const grid = document.getElementById('slots-grid');
+  const empty = document.getElementById('slots-empty');
+  if(!slots.length) { grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  grid.innerHTML = slots.map(s=>{
+    const bel = slotBestand(s.id);
+    const pct = Math.min(100,Math.round(bel/s.kapazitaet*100));
+    const cls = pct>=100?'full':pct>=75?'warn':'';
+    return `<div class="slot-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div><div class="slot-name">${s.name}</div><div class="slot-zone">${s.zone||'keine Zone'}</div></div>
+        <div class="actions" style="flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" onclick="editSlot('${s.id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteSlot('${s.id}')">🗑</button>
+        </div>
+      </div>
+      <div class="slot-bar-bg"><div class="slot-bar ${cls}" style="width:${pct}%"></div></div>
+      <div class="slot-cap">${bel} / ${s.kapazitaet} Einh. · ${pct}%</div>
+      ${s.notiz?'<div style="font-size:11px;color:var(--muted);margin-top:6px">'+s.notiz+'</div>':''}
+    </div>`;
+  }).join('');
+}
+
+function renderBerichte() {
+  const katMap={};
+  artikel.forEach(a=>{const k=a.kategorie||'Sonstige';katMap[k]=(katMap[k]||0)+a.bestand;});
+  const katE=Object.entries(katMap).sort((a,b)=>b[1]-a[1]);
+  const maxK=Math.max(...katE.map(e=>e[1]),1);
+  document.getElementById('chart-kat').innerHTML=katE.length
+    ?katE.map(([k,v])=>`<div class="bar-row"><div class="bar-label" title="${k}">${k}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(v/maxK*100)}%"></div></div><div class="bar-num">${v}</div></div>`).join('')
+    :'<div style="color:var(--muted);font-size:12px">Keine Daten</div>';
+
+  const top5=[...artikel].sort((a,b)=>b.bestand-a.bestand).slice(0,5);
+  const maxT=Math.max(...top5.map(a=>a.bestand),1);
+  document.getElementById('chart-top').innerHTML=top5.length
+    ?top5.map(a=>`<div class="bar-row"><div class="bar-label" title="${a.name}">${a.name}</div><div class="bar-track"><div class="bar-fill green" style="width:${Math.round(a.bestand/maxT*100)}%"></div></div><div class="bar-num">${a.bestand}</div></div>`).join('')
+    :'<div style="color:var(--muted);font-size:12px">Keine Daten</div>';
+
+  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-30);
+  const bew30=bewegungen.filter(m=>new Date(m.datum)>=cutoff);
+  const ein=bew30.filter(m=>m.typ==='einlagerung').reduce((s,m)=>s+m.menge,0);
+  const aus=bew30.filter(m=>m.typ==='auslagerung').reduce((s,m)=>s+m.menge,0);
+  const korr=bew30.filter(m=>m.typ==='korrektur').length;
+  const maxM=Math.max(ein,aus,korr,1);
+  document.getElementById('chart-movement').innerHTML=`
+    <div class="bar-row"><div class="bar-label">Einlagerungen</div><div class="bar-track"><div class="bar-fill green" style="width:${Math.round(ein/maxM*100)}%"></div></div><div class="bar-num">${ein}</div></div>
+    <div class="bar-row"><div class="bar-label">Auslagerungen</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(aus/maxM*100)}%"></div></div><div class="bar-num">${aus}</div></div>
+    <div class="bar-row"><div class="bar-label">Korrekturen</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(korr/maxM*100)}%;background:var(--yellow)"></div></div><div class="bar-num">${korr}</div></div>`;
+}
+
+function exportCSV() {
+  const rows=[['Artikel-Nr','Name','Kategorie','Bestand','Einheit','Mindestbestand','Lagerplatz','Wert/Einheit','Notiz']];
+  artikel.forEach(a=>rows.push([a.nr||'',a.name,a.kategorie||'',a.bestand,a.einheit,a.mindest||0,a.slot_id?getSlotName(a.slot_id):'',a.wert||0,a.notiz||'']));
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='lager_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click(); URL.revokeObjectURL(url);
+  toast('CSV exportiert ✓');
+}
+
+document.getElementById('dash-date').textContent = new Date().toLocaleDateString('de-DE',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
