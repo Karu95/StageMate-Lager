@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lagerverwaltung · StageMate</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── TOKENS ───────────────────────────────────────────── */
+:root {
+  --sans: 'Syne', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'DM Mono', monospace;
+  --radius: 8px;
+  --accent:   #F47F47;
+  --accent-h: #e06832;
+  --green:    #1a9e75;
+  --blue:     #4a8fd4;
+  --yellow:   #e8b84b;
+  --danger:   #c0392b;
+}
+
+[data-theme="dark"] {
+  --bg:      #0f0f0f;
+  --bg2:     #181818;
+  --bg3:     #222;
+  --bg4:     #2a2a2a;
+  --border:  #2a2a2a;
+  --border2: #333;
+  --text:    #f0ede8;
+  --muted:   #888;
+  --shadow:  0 8px 24px rgba(0,0,0,0.4);
+  --input-bg: #222;
+  --pill-ok-bg: rgba(26,158,117,.18); --pill-ok-cl: #2ecc71;
+  --pill-warn-bg: rgba(232,184,75,.18); --pill-warn-cl: #e8b84b;
+  --pill-low-bg: rgba(192,57,43,.18); --pill-low-cl: #e74c3c;
+  --pill-empty-bg: rgba(136,136,136,.18); --pill-empty-cl: #aaa;
+  --pill-blue-bg: rgba(74,143,212,.18); --pill-blue-cl: #4a8fd4;
+  --chart-grid: rgba(255,255,255,0.06);
+  --chart-tick: #666;
+}
+
+[data-theme="light"] {
+  --bg:      #f5f7f8;
+  --bg2:     #ffffff;
+  --bg3:     #f0f2f3;
+  --bg4:     #e8ecea;
+  --border:  #dbe3df;
+  --border2: #c8d4ce;
+  --text:    #1d2522;
+  --muted:   #62716b;
+  --shadow:  0 4px 16px rgba(32,45,40,.08);
+  --input-bg: #fff;
+  --pill-ok-bg: #eaf7ed; --pill-ok-cl: #287d3c;
+  --pill-warn-bg: #fff6df; --pill-warn-cl: #b7791f;
+  --pill-low-bg: #fff0ef; --pill-low-cl: #b42318;
+  --pill-empty-bg: #f1f3f5; --pill-empty-cl: #686f78;
+  --pill-blue-bg: #eaf4fb; --pill-blue-cl: #1f5b86;
+  --chart-grid: rgba(0,0,0,0.07);
+  --chart-tick: #888;
+}
+
+/* ── RESET ────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; line-height: 1.45; transition: background .2s, color .2s; }
+
+/* ── LAYOUT ───────────────────────────────────────────── */
+.shell { display: flex; min-height: 100vh; }
+.sidebar { width: 224px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; flex-shrink: 0; transition: background .2s; }
+.main { flex: 1; overflow-y: auto; }
+
+/* ── SIDEBAR ──────────────────────────────────────────── */
+.logo { padding: 22px 20px 16px; border-bottom: 1px solid var(--border); }
+.logo-eyebrow { font-size: 10px; font-family: var(--mono); color: var(--accent); letter-spacing: 2.5px; text-transform: uppercase; }
+.logo-name { font-size: 19px; font-weight: 700; margin-top: 3px; display: flex; align-items: center; gap: 8px; }
+.conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background .3s; }
+.conn-dot.ok  { background: var(--green); }
+.conn-dot.err { background: var(--danger); }
+
+nav { padding: 10px 0; flex: 1; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 20px; cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 500; border-left: 2px solid transparent; transition: all .15s; user-select: none; }
+.nav-item:hover { color: var(--text); background: var(--bg3); }
+.nav-item.active { color: var(--accent); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.nav-icon { font-size: 15px; }
+
+.sidebar-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.device-name { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.sync-info   { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+/* ── THEME SWITCH ─────────────────────────────────────── */
+.theme-switch { display: flex; align-items: center; gap: 8px; }
+.theme-label { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.toggle { position: relative; width: 36px; height: 20px; cursor: pointer; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-track { position: absolute; inset: 0; border-radius: 20px; background: var(--bg4); border: 1px solid var(--border2); transition: background .2s; }
+.toggle input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+.toggle-thumb { position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: transform .2s, background .2s; }
+.toggle input:checked ~ .toggle-thumb { transform: translateX(16px); background: #fff; }
+
+/* ── PAGES ────────────────────────────────────────────── */
+.page { display: none; padding: 28px 32px 48px; }
+.page.active { display: block; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; gap: 14px; flex-wrap: wrap; }
+.page-title { font-size: 24px; font-weight: 700; }
+.page-sub { font-size: 13px; color: var(--muted); margin-top: 3px; font-family: var(--mono); }
+
+/* ── SETUP BANNER ─────────────────────────────────────── */
+.setup-banner { display: none; margin-bottom: 18px; border: 1px solid #f0c36a; background: #fff8e6; color: #5e470f; border-radius: var(--radius); padding: 14px 16px; }
+[data-theme="dark"] .setup-banner { background: rgba(240,195,106,.1); color: #f0c36a; border-color: rgba(240,195,106,.3); }
+.setup-banner.active { display: block; }
+.setup-banner pre { overflow: auto; background: #111917; color: #d9f3e7; border-radius: var(--radius); padding: 12px; font-size: 11px; line-height: 1.5; max-height: 220px; margin-top: 10px; }
+
+/* ── STATS ────────────────────────────────────────────── */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
+.stat-label { font-size: 11px; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.stat-val { font-size: 30px; font-weight: 750; margin-top: 6px; }
+.stat-val.orange { color: var(--accent); }
+.stat-val.green  { color: var(--green); }
+.stat-val.blue   { color: var(--blue); }
+.stat-val.yellow { color: var(--yellow); }
+.stat-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* ── CARD ─────────────────────────────────────────────── */
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.card-body { padding: 16px; }
+.card-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+.two-col { display: grid; grid-template-columns: 1.1fr .9fr; gap: 14px; margin-bottom: 14px; }
+.three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+/* ── BUTTONS ──────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: var(--radius); font-family: var(--sans); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border2); background: var(--bg2); color: var(--text); transition: all .15s; }
+.btn:hover { background: var(--bg3); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-h); border-color: var(--accent-h); }
+.btn-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ── TABLE ────────────────────────────────────────────── */
+.table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+.table-toolbar { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.search-input { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 7px 11px; color: var(--text); font-family: var(--sans); font-size: 13px; min-width: 190px; flex: 1; }
+.search-input:focus { outline: none; border-color: var(--accent); }
+select.search-input { cursor: pointer; flex: 0; min-width: 150px; }
+table { width: 100%; border-collapse: collapse; min-width: 700px; }
+th { text-align: left; padding: 11px 14px; font-size: 11px; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+td { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: color-mix(in srgb, var(--accent) 3%, transparent); }
+.table-scroll { overflow-x: auto; }
+.meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ── PILLS ────────────────────────────────────────────── */
+.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-family: var(--mono); border: 1px solid transparent; white-space: nowrap; font-weight: 500; }
+.pill-ok    { background: var(--pill-ok-bg);    color: var(--pill-ok-cl); }
+.pill-warn  { background: var(--pill-warn-bg);  color: var(--pill-warn-cl); }
+.pill-low   { background: var(--pill-low-bg);   color: var(--pill-low-cl); }
+.pill-empty { background: var(--pill-empty-bg); color: var(--pill-empty-cl); }
+.pill-blue  { background: var(--pill-blue-bg);  color: var(--pill-blue-cl); }
+
+/* ── LIST ROWS (dashboard) ────────────────────────────── */
+.list-rows { display: flex; flex-direction: column; gap: 8px; }
+.list-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--bg3); }
+.list-row h3 { font-size: 14px; font-weight: 600; }
+
+/* ── SLOT CARDS ───────────────────────────────────────── */
+.slot-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+.slot-name { font-size: 15px; font-weight: 600; }
+.slot-zone { font-size: 11px; font-family: var(--mono); color: var(--muted); margin-top: 2px; }
+.slot-bar-bg { background: var(--bg4); border-radius: 999px; height: 6px; margin-top: 12px; overflow: hidden; }
+.slot-bar { height: 6px; border-radius: 999px; background: var(--green); transition: width .4s; }
+.slot-bar.warn { background: var(--yellow); }
+.slot-bar.full { background: var(--danger); }
+.slot-cap { font-size: 11px; font-family: var(--mono); color: var(--muted); margin-top: 5px; }
+
+/* ── REPORTS ──────────────────────────────────────────── */
+.report-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+.report-title { font-size: 11px; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+canvas { width: 100% !important; max-height: 300px; }
+
+/* ── MODAL (native dialog) ────────────────────────────── */
+dialog { border: none; border-radius: 12px; padding: 0; box-shadow: 0 28px 80px rgba(0,0,0,.45); width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 32px); overflow: auto; background: var(--bg2); color: var(--text); }
+dialog::backdrop { background: rgba(10,14,12,.6); backdrop-filter: blur(3px); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); padding: 16px 18px; }
+.modal-head h2 { font-size: 18px; font-weight: 700; }
+.modal-body { padding: 18px; }
+.modal-footer { border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.form-grid .full { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 11px; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.field input, .field select, .field textarea { background: var(--input-bg); border: 1px solid var(--border2); border-radius: var(--radius); padding: 9px 11px; color: var(--text); font-family: var(--sans); font-size: 13px; width: 100%; }
+.field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
+.field textarea { min-height: 72px; resize: vertical; }
+
+/* ── TOAST ────────────────────────────────────────────── */
+#toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 8px; width: min(380px, calc(100vw - 40px)); }
+.toast-msg { border-radius: var(--radius); padding: 11px 14px; font-size: 13px; box-shadow: var(--shadow); animation: slideUp .2s ease; }
+[data-theme="dark"]  .toast-msg { background: #1e2e28; color: var(--text); border: 1px solid var(--border2); }
+[data-theme="light"] .toast-msg { background: #17362f; color: #fff; }
+@keyframes slideUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+/* ── EMPTY STATE ──────────────────────────────────────── */
+.empty-state { text-align: center; padding: 36px; color: var(--muted); }
+.empty-icon { font-size: 28px; margin-bottom: 10px; }
+
+/* ── MISC ─────────────────────────────────────────────── */
+.tag { font-size: 11px; font-family: var(--mono); background: var(--bg3); border: 1px solid var(--border2); padding: 2px 7px; border-radius: 20px; color: var(--muted); }
+.mono { font-family: var(--mono); }
+.actions-cell { display: flex; gap: 6px; }
+section-gap { margin-top: 14px; }
+
+/* ── RESPONSIVE ───────────────────────────────────────── */
+@media (max-width: 900px) {
+  .two-col, .three-col { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .form-grid .full { grid-column: 1; }
+}
+@media (max-width: 680px) {
+  .sidebar { width: 52px; }
+  .nav-item span:last-child, .logo-eyebrow, .logo-name, .sidebar-footer { display: none; }
+  .nav-item { justify-content: center; padding: 12px; }
+  .page { padding: 16px; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-eyebrow">StageMate</div>
+      <div class="logo-name">Lager <span class="conn-dot" id="conn-dot"></span></div>
+    </div>
+    <nav id="main-nav">
+      <div class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span><span>Dashboard</span></div>
+      <div class="nav-item" data-page="items"><span class="nav-icon">📦</span><span>Artikel</span></div>
+      <div class="nav-item" data-page="movements"><span class="nav-icon">🔄</span><span>Bewegungen</span></div>
+      <div class="nav-item" data-page="locations"><span class="nav-icon">🗂️</span><span>Lagerplätze</span></div>
+      <div class="nav-item" data-page="reports"><span class="nav-icon">📈</span><span>Berichte</span></div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="theme-switch">
+        <span class="theme-label" id="theme-label">DARK</span>
+        <label class="toggle">
+          <input type="checkbox" id="theme-toggle">
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+        <span class="theme-label">LIGHT</span>
+      </div>
+      <div class="device-name" id="device-label"></div>
+      <div class="sync-info" id="sync-info">–</div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- SETUP BANNER -->
+    <div class="setup-banner" id="setup-banner">
+      <strong>Supabase-Tabellen fehlen noch.</strong>
+      Führe das Setup-Skript im SQL-Editor aus und lade die Seite neu.
+      <pre id="setup-sql"></pre>
+      <button class="btn btn-sm" id="copy-sql-btn" style="margin-top:8px">SQL kopieren</button>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Dashboard</div>
+          <div class="page-sub" id="dash-date"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="refresh-btn">↻ Aktualisieren</button>
+          <button class="btn" id="seed-btn">Beispieldaten</button>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Artikel</div><div class="stat-val orange" id="stat-items">–</div><div class="stat-hint">aktive Stammdaten</div></div>
+        <div class="stat-card"><div class="stat-label">Gesamtbestand</div><div class="stat-val green" id="stat-stock">–</div><div class="stat-hint">über alle Artikel</div></div>
+        <div class="stat-card"><div class="stat-label">Kritisch</div><div class="stat-val yellow" id="stat-critical">–</div><div class="stat-hint">leer oder unter Mindest</div></div>
+        <div class="stat-card"><div class="stat-label">Lagerauslastung</div><div class="stat-val blue" id="stat-usage">–</div><div class="stat-hint">Bestand zu Kapazität</div></div>
+      </div>
+      <div class="two-col">
+        <div class="card"><div class="card-body">
+          <div class="card-title">Niedrige Bestände</div>
+          <div id="low-stock-list"></div>
+        </div></div>
+        <div class="card"><div class="card-body">
+          <div class="card-title">Letzte Bewegungen</div>
+          <div id="recent-moves-list"></div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- ARTIKEL -->
+    <div class="page" id="page-items">
+      <div class="page-header">
+        <div><div class="page-title">Artikel</div><div class="page-sub">Bestände verwalten</div></div>
+        <button class="btn btn-primary" id="new-item-btn">+ Artikel anlegen</button>
+      </div>
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <input class="search-input" type="search" placeholder="Name, SKU, Kategorie…" id="item-search">
+          <select class="search-input" id="cat-filter"><option value="">Alle Kategorien</option></select>
+          <select class="search-input" id="status-filter">
+            <option value="">Alle Status</option>
+            <option value="ok">Ok</option>
+            <option value="knapp">Knapp</option>
+            <option value="niedrig">Niedrig</option>
+            <option value="leer">Leer</option>
+          </select>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Artikel / SKU</th><th>Kategorie</th><th>Lagerplatz</th><th>Bestand</th><th>Status</th><th>Aktionen</th></tr></thead>
+            <tbody id="items-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- BEWEGUNGEN -->
+    <div class="page" id="page-movements">
+      <div class="page-header">
+        <div><div class="page-title">Bewegungen</div><div class="page-sub">Ein- & Auslagerungen · Korrekturen</div></div>
+        <button class="btn btn-primary" id="new-movement-btn">+ Bewegung erfassen</button>
+      </div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Datum</th><th>Artikel</th><th>Typ</th><th>Menge</th><th>Vorher</th><th>Nachher</th><th>Gerät</th><th>Notiz</th></tr></thead>
+            <tbody id="movements-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- LAGERPLÄTZE -->
+    <div class="page" id="page-locations">
+      <div class="page-header">
+        <div><div class="page-title">Lagerplätze</div><div class="page-sub">Zonen & Kapazitäten</div></div>
+        <button class="btn btn-primary" id="new-location-btn">+ Lagerplatz anlegen</button>
+      </div>
+      <div class="three-col" id="locations-grid"></div>
+    </div>
+
+    <!-- BERICHTE -->
+    <div class="page" id="page-reports">
+      <div class="page-header">
+        <div><div class="page-title">Berichte</div><div class="page-sub">Auswertungen & Export</div></div>
+        <div class="btn-row">
+          <button class="btn" id="export-items-btn">⬇ Artikel CSV</button>
+          <button class="btn" id="export-movements-btn">⬇ Bewegungen CSV</button>
+        </div>
+      </div>
+      <div class="two-col" style="margin-bottom:14px">
+        <div class="report-card"><div class="report-title">Bestand nach Kategorie</div><canvas id="cat-chart"></canvas></div>
+        <div class="report-card"><div class="report-title">Top-Artikel nach Bestand</div><canvas id="top-chart"></canvas></div>
+      </div>
+      <div class="report-card"><div class="report-title">Bewegungsstatistik</div><canvas id="mov-chart"></canvas></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MODAL: ARTIKEL -->
+<dialog id="item-dialog">
+  <form id="item-form">
+    <div class="modal-head">
+      <h2 id="item-dialog-title">Artikel anlegen</h2>
+      <button type="button" class="btn btn-sm" data-close="item-dialog">✕</button>
+    </div>
+    <div class="modal-body form-grid">
+      <input type="hidden" id="item-id">
+      <div class="field"><label>SKU / Artikelnummer *</label><input id="item-sku" required placeholder="ART-001"></div>
+      <div class="field"><label>Name *</label><input id="item-name" required placeholder="z.B. Kabeltrommel 50m"></div>
+      <div class="field"><label>Kategorie *</label><input id="item-category" required placeholder="Technik, Mobiliar…"></div>
+      <div class="field"><label>Lagerplatz</label><select id="item-location"></select></div>
+      <div class="field"><label>Bestand</label><input id="item-qty" type="number" min="0" value="0" required></div>
+      <div class="field"><label>Mindestbestand</label><input id="item-min" type="number" min="0" value="0" required></div>
+      <div class="field"><label>Einheit</label><input id="item-unit" value="Stk" placeholder="Stk, m, kg…"></div>
+      <div class="field full"><label>Notiz</label><textarea id="item-notes" placeholder="Optional…"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" data-close="item-dialog">Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- MODAL: BEWEGUNG -->
+<dialog id="movement-dialog">
+  <form id="movement-form">
+    <div class="modal-head">
+      <h2>Bewegung erfassen</h2>
+      <button type="button" class="btn btn-sm" data-close="movement-dialog">✕</button>
+    </div>
+    <div class="modal-body form-grid">
+      <div class="field full"><label>Artikel *</label><select id="move-item" required></select></div>
+      <div class="field"><label>Typ</label>
+        <select id="move-type" required>
+          <option value="in">Einlagerung (+)</option>
+          <option value="out">Auslagerung (–)</option>
+          <option value="adjustment">Korrektur (absolut)</option>
+        </select>
+      </div>
+      <div class="field"><label>Menge / Zielbestand</label><input id="move-qty" type="number" min="0" required value="1"></div>
+      <div class="field full"><label>Notiz / Grund</label><textarea id="move-reason" placeholder="Lieferung, Auftrag, Messe Frankfurt…"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" data-close="movement-dialog">Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Buchen</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- MODAL: LAGERPLATZ -->
+<dialog id="location-dialog">
+  <form id="location-form">
+    <div class="modal-head">
+      <h2 id="location-dialog-title">Lagerplatz anlegen</h2>
+      <button type="button" class="btn btn-sm" data-close="location-dialog">✕</button>
+    </div>
+    <div class="modal-body form-grid">
+      <input type="hidden" id="location-id">
+      <div class="field"><label>Name *</label><input id="location-name" required placeholder="Regal A1, LKW 1…"></div>
+      <div class="field"><label>Zone</label><input id="location-zone" placeholder="Halle A, Außen…"></div>
+      <div class="field"><label>Kapazität (Einheiten)</label><input id="location-cap" type="number" min="1" value="100" required></div>
+      <div class="field full"><label>Beschreibung</label><textarea id="location-desc" placeholder="Optional…"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" data-close="location-dialog">Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast-container"></div>
+
+<script>
+// ── CONFIG ───────────────────────────────────────────────
+const SUPABASE_URL = 'https://ymggvjccjsqqwzbtkpni.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_lVQN_HVMRXj7rwcT2oqj3Q_TPDuuDcz';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const SCHEMA_SQL = `-- Führe dieses Script im Supabase SQL-Editor aus
+
+create table if not exists public.locations (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  zone text,
+  capacity integer not null default 100 check (capacity > 0),
+  description text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.items (
+  id uuid primary key default gen_random_uuid(),
+  sku text not null unique,
+  name text not null,
+  category text not null default 'Allgemein',
+  location_id uuid references public.locations(id) on delete set null,
+  quantity integer not null default 0 check (quantity >= 0),
+  min_stock integer not null default 0 check (min_stock >= 0),
+  unit text not null default 'Stk',
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.movements (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null references public.items(id) on delete cascade,
+  type text not null check (type in ('in','out','adjustment')),
+  quantity integer not null check (quantity >= 0),
+  previous_quantity integer not null check (previous_quantity >= 0),
+  new_quantity integer not null check (new_quantity >= 0),
+  reason text,
+  device_name text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.locations enable row level security;
+alter table public.items enable row level security;
+alter table public.movements enable row level security;
+
+create policy "anon all locations" on public.locations for all to anon using (true) with check (true);
+create policy "anon all items"     on public.items     for all to anon using (true) with check (true);
+create policy "anon read movements" on public.movements for select to anon using (true);
+create policy "anon insert movements" on public.movements for insert to anon with check (true);`;
+
+// ── STATE ────────────────────────────────────────────────
+const state = {
+  items: [], locations: [], movements: [], charts: {},
+  deviceName: localStorage.getItem('sm_device') || 'Gerät-' + Math.random().toString(36).slice(2,6).toUpperCase()
+};
+localStorage.setItem('sm_device', state.deviceName);
+
+// ── HELPERS ──────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+function esc(v) { return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
+
+function statusFor(item) {
+  if (item.quantity === 0) return { key:'leer', label:'Leer', cls:'pill-empty' };
+  if (item.quantity < item.min_stock) return { key:'niedrig', label:'Niedrig', cls:'pill-low' };
+  if (item.min_stock > 0 && item.quantity <= item.min_stock * 1.25) return { key:'knapp', label:'Knapp', cls:'pill-warn' };
+  return { key:'ok', label:'Ok', cls:'pill-ok' };
+}
+function locName(id) {
+  const l = state.locations.find(x=>x.id===id);
+  return l ? (l.zone ? l.zone+' · ' : '') + l.name : 'Nicht zugeordnet';
+}
+function movLabel(type) { return {in:'Einlagerung',out:'Auslagerung',adjustment:'Korrektur'}[type]||type; }
+
+// ── TOAST ────────────────────────────────────────────────
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast-msg';
+  el.textContent = msg;
+  $('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── THEME ────────────────────────────────────────────────
+function applyTheme(light) {
+  document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+  localStorage.setItem('sm_theme', light ? 'light' : 'dark');
+  // Rebuild charts with new colors
+  Object.values(state.charts).forEach(c => c.destroy());
+  state.charts = {};
+  renderReports();
+}
+$('theme-toggle').addEventListener('change', e => applyTheme(e.target.checked));
+const savedTheme = localStorage.getItem('sm_theme');
+if (savedTheme === 'light') { $('theme-toggle').checked = true; document.documentElement.setAttribute('data-theme','light'); }
+
+// ── NAVIGATION ───────────────────────────────────────────
+document.getElementById('main-nav').addEventListener('click', e => {
+  const item = e.target.closest('.nav-item');
+  if (!item) return;
+  const page = item.dataset.page;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n === item));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-'+page));
+  if (page === 'reports') renderReports();
+});
+
+// ── MODAL ────────────────────────────────────────────────
+document.addEventListener('click', e => {
+  const closeBtn = e.target.closest('[data-close]');
+  if (closeBtn) $(closeBtn.dataset.close).close();
+});
+
+// ── SUPABASE LOAD ────────────────────────────────────────
+async function loadAll() {
+  $('conn-dot').className = 'conn-dot';
+  $('sync-info').textContent = 'Lade…';
+  const [locRes, itemRes, movRes] = await Promise.all([
+    db.from('locations').select('*').order('zone').order('name'),
+    db.from('items').select('*').order('name'),
+    db.from('movements').select('*, items(name,sku)').order('created_at',{ascending:false}).limit(300)
+  ]);
+  const errs = [locRes,itemRes,movRes].filter(r=>r.error).map(r=>r.error);
+  if (errs.length) {
+    $('conn-dot').className = 'conn-dot err';
+    $('sync-info').textContent = 'Fehler';
+    $('setup-banner').classList.add('active');
+    $('setup-sql').textContent = SCHEMA_SQL;
+    return;
+  }
+  $('setup-banner').classList.remove('active');
+  state.locations = locRes.data || [];
+  state.items     = itemRes.data || [];
+  state.movements = movRes.data || [];
+  $('conn-dot').className = 'conn-dot ok';
+  $('sync-info').textContent = 'Sync ' + new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+  renderAll();
+}
+
+// ── RENDER ALL ───────────────────────────────────────────
+function renderAll() { renderDashboard(); renderItems(); renderMovements(); renderLocations(); renderReports(); fillSelects(); }
+
+function renderDashboard() {
+  const totalStock = state.items.reduce((s,i)=>s+Number(i.quantity||0),0);
+  const capacity   = state.locations.reduce((s,l)=>s+Number(l.capacity||0),0);
+  const critical   = state.items.filter(i=>['leer','niedrig'].includes(statusFor(i).key));
+  $('stat-items').textContent    = state.items.length;
+  $('stat-stock').textContent    = totalStock;
+  $('stat-critical').textContent = critical.length;
+  $('stat-usage').textContent    = capacity ? Math.round(totalStock/capacity*100)+'%' : '0%';
+
+  $('low-stock-list').innerHTML = critical.length
+    ? '<div class="list-rows">'+critical.slice(0,8).map(i=>{
+        const s=statusFor(i);
+        return `<div class="list-row"><div><h3>${esc(i.name)}</h3><div class="meta">${esc(i.sku)} · Min. ${i.min_stock} ${esc(i.unit)}</div></div><span class="pill ${s.cls}">${s.label}: ${i.quantity}</span></div>`;
+      }).join('')+'</div>'
+    : '<div class="empty-state"><div class="empty-icon">✓</div>Alle Bestände in Ordnung</div>';
+
+  $('recent-moves-list').innerHTML = state.movements.length
+    ? '<div class="list-rows">'+state.movements.slice(0,8).map(m=>`
+        <div class="list-row">
+          <div><h3>${esc(m.items?.name||'Artikel')}</h3><div class="meta">${fmt.format(new Date(m.created_at))} · ${esc(m.reason||'ohne Notiz')} · <span style="font-family:var(--mono);font-size:10px;opacity:.7">${esc(m.device_name||'')}</span></div></div>
+          <span class="pill pill-blue">${movLabel(m.type)} ${m.quantity}</span>
+        </div>`).join('')+'</div>'
+    : '<div class="empty-state">Noch keine Bewegungen</div>';
+}
+
+function renderItems() {
+  const q   = ($('item-search').value||'').trim().toLowerCase();
+  const cat = $('cat-filter').value;
+  const st  = $('status-filter').value;
+  const cats = [...new Set(state.items.map(i=>i.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'de'));
+  const selCat = $('cat-filter').value;
+  $('cat-filter').innerHTML = '<option value="">Alle Kategorien</option>' + cats.map(c=>`<option value="${esc(c)}"${c===selCat?' selected':''}>${esc(c)}</option>`).join('');
+
+  const filtered = state.items.filter(i=>{
+    const text = `${i.name} ${i.sku} ${i.category}`.toLowerCase();
+    return (!q||text.includes(q)) && (!cat||i.category===cat) && (!st||statusFor(i).key===st);
+  });
+
+  $('items-table').innerHTML = filtered.length
+    ? filtered.map(i=>{
+        const s=statusFor(i);
+        return `<tr>
+          <td><strong>${esc(i.name)}</strong><div class="meta mono">${esc(i.sku)}</div></td>
+          <td><span class="tag">${esc(i.category)}</span></td>
+          <td style="font-size:12px;color:var(--muted)">${esc(locName(i.location_id))}</td>
+          <td class="mono"><strong>${i.quantity}</strong> <span style="color:var(--muted);font-size:11px">${esc(i.unit)}</span></td>
+          <td><span class="pill ${s.cls}">${s.label}</span></td>
+          <td><div class="actions-cell">
+            <button class="btn btn-sm" data-edit-item="${i.id}">✏️</button>
+            <button class="btn btn-sm btn-danger" data-del-item="${i.id}">🗑</button>
+          </div></td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="6"><div class="empty-state">Keine Artikel gefunden</div></td></tr>';
+}
+
+function renderMovements() {
+  $('movements-table').innerHTML = state.movements.length
+    ? state.movements.map(m=>`<tr>
+        <td class="mono" style="font-size:12px;color:var(--muted)">${fmt.format(new Date(m.created_at))}</td>
+        <td><strong>${esc(m.items?.name||'–')}</strong><div class="meta mono">${esc(m.items?.sku||'')}</div></td>
+        <td><span class="pill pill-blue">${movLabel(m.type)}</span></td>
+        <td class="mono" style="color:${m.type==='in'?'var(--green)':m.type==='out'?'var(--accent)':'var(--muted)'}">
+          ${m.type==='in'?'+':m.type==='out'?'–':'='}${m.quantity}</td>
+        <td class="mono" style="color:var(--muted)">${m.previous_quantity}</td>
+        <td class="mono"><strong>${m.new_quantity}</strong></td>
+        <td style="font-size:11px;color:var(--muted)">${esc(m.device_name||'–')}</td>
+        <td style="font-size:12px;color:var(--muted)">${esc(m.reason||'–')}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="8"><div class="empty-state">Keine Bewegungen erfasst</div></td></tr>';
+}
+
+function renderLocations() {
+  $('locations-grid').innerHTML = state.locations.length
+    ? state.locations.map(l=>{
+        const used = state.items.filter(i=>i.location_id===l.id).reduce((s,i)=>s+Number(i.quantity||0),0);
+        const pct  = Math.min(100, Math.round(used/l.capacity*100));
+        const cls  = pct>=100?'full':pct>=75?'warn':'';
+        return `<div class="slot-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div><div class="slot-name">${esc(l.name)}</div><div class="slot-zone">${esc(l.zone||'keine Zone')}</div></div>
+            <div class="actions-cell">
+              <button class="btn btn-sm" data-edit-loc="${l.id}">✏️</button>
+              <button class="btn btn-sm btn-danger" data-del-loc="${l.id}">🗑</button>
+            </div>
+          </div>
+          <div class="slot-bar-bg"><div class="slot-bar ${cls}" style="width:${pct}%"></div></div>
+          <div class="slot-cap">${used} / ${l.capacity} Einh. · ${pct}%</div>
+          ${l.description?'<div style="font-size:11px;color:var(--muted);margin-top:6px">'+esc(l.description)+'</div>':''}
+        </div>`;
+      }).join('')
+    : '<div class="empty-state"><div class="empty-icon">🗂️</div>Noch keine Lagerplätze angelegt</div>';
+}
+
+function renderReports() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const gridColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+  const tickColor = isDark ? '#666' : '#888';
+  const palette = ['#F47F47','#1a9e75','#4a8fd4','#e8b84b','#9b59b6','#c0392b','#16a085','#8e7dbe'];
+
+  function draw(id, labels, data, label) {
+    const ctx = $(id);
+    if (!ctx) return;
+    if (state.charts[id]) { state.charts[id].destroy(); delete state.charts[id]; }
+    state.charts[id] = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label, data, backgroundColor: palette, borderRadius: 4 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { color: tickColor } },
+          y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: tickColor, precision: 0 } }
+        }
+      }
+    });
+  }
+
+  const byCat = {};
+  state.items.forEach(i=>{ byCat[i.category]=(byCat[i.category]||0)+Number(i.quantity||0); });
+  draw('cat-chart', Object.keys(byCat), Object.values(byCat), 'Bestand');
+
+  const top = [...state.items].sort((a,b)=>b.quantity-a.quantity).slice(0,8);
+  draw('top-chart', top.map(i=>i.name), top.map(i=>i.quantity), 'Bestand');
+
+  const counts = { Einlagerung:0, Auslagerung:0, Korrektur:0 };
+  state.movements.forEach(m=>counts[movLabel(m.type)]=(counts[movLabel(m.type)]||0)+1);
+  draw('mov-chart', Object.keys(counts), Object.values(counts), 'Anzahl');
+}
+
+// ── SELECTS ──────────────────────────────────────────────
+function fillSelects() {
+  $('item-location').innerHTML  = '<option value="">Nicht zugeordnet</option>' + state.locations.map(l=>`<option value="${l.id}">${esc(locName(l.id))}</option>`).join('');
+  $('move-item').innerHTML = state.items.map(i=>`<option value="${i.id}">${esc(i.name)} (${esc(i.sku)}) · Bestand ${i.quantity}</option>`).join('');
+}
+
+// ── ITEM CRUD ────────────────────────────────────────────
+$('new-item-btn').addEventListener('click', () => { $('item-id').value=''; $('item-form').reset(); $('item-dialog-title').textContent='Artikel anlegen'; fillSelects(); $('item-dialog').showModal(); });
+
+$('item-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const id  = $('item-id').value;
+  const payload = {
+    sku: $('item-sku').value.trim(),
+    name: $('item-name').value.trim(),
+    category: $('item-category').value.trim() || 'Allgemein',
+    location_id: $('item-location').value || null,
+    quantity: Number($('item-qty').value),
+    min_stock: Number($('item-min').value),
+    unit: $('item-unit').value.trim() || 'Stk',
+    notes: $('item-notes').value.trim() || null,
+    updated_at: new Date().toISOString()
+  };
+  const res = id ? await db.from('items').update(payload).eq('id',id) : await db.from('items').insert(payload);
+  if (res.error) { toast('Fehler: '+res.error.message); return; }
+  $('item-dialog').close();
+  toast('Artikel gespeichert.');
+  await loadAll();
+});
+
+document.addEventListener('click', async e => {
+  const editBtn = e.target.closest('[data-edit-item]');
+  const delBtn  = e.target.closest('[data-del-item]');
+  const editLoc = e.target.closest('[data-edit-loc]');
+  const delLoc  = e.target.closest('[data-del-loc]');
+
+  if (editBtn) {
+    const item = state.items.find(i=>i.id===editBtn.dataset.editItem);
+    if (!item) return;
+    $('item-id').value = item.id;
+    $('item-sku').value = item.sku;
+    $('item-name').value = item.name;
+    $('item-category').value = item.category;
+    $('item-qty').value = item.quantity;
+    $('item-min').value = item.min_stock;
+    $('item-unit').value = item.unit;
+    $('item-notes').value = item.notes||'';
+    $('item-dialog-title').textContent = 'Artikel bearbeiten';
+    fillSelects();
+    $('item-location').value = item.location_id||'';
+    $('item-dialog').showModal();
+  }
+
+  if (delBtn) {
+    const item = state.items.find(i=>i.id===delBtn.dataset.delItem);
+    if (!confirm(`"${item?.name||''}" löschen? Alle Bewegungen werden mitgelöscht.`)) return;
+    const res = await db.from('items').delete().eq('id',delBtn.dataset.delItem);
+    if (res.error) { toast('Fehler: '+res.error.message); return; }
+    toast('Artikel gelöscht.');
+    await loadAll();
+  }
+
+  if (editLoc) {
+    const l = state.locations.find(x=>x.id===editLoc.dataset.editLoc);
+    if (!l) return;
+    $('location-id').value = l.id;
+    $('location-name').value = l.name;
+    $('location-zone').value = l.zone||'';
+    $('location-cap').value = l.capacity;
+    $('location-desc').value = l.description||'';
+    $('location-dialog-title').textContent = 'Lagerplatz bearbeiten';
+    $('location-dialog').showModal();
+  }
+
+  if (delLoc) {
+    const l = state.locations.find(x=>x.id===delLoc.dataset.delLoc);
+    if (!confirm(`Lagerplatz "${l?.name||''}" löschen?`)) return;
+    const res = await db.from('locations').delete().eq('id',delLoc.dataset.delLoc);
+    if (res.error) { toast('Fehler: '+res.error.message); return; }
+    toast('Lagerplatz gelöscht.');
+    await loadAll();
+  }
+});
+
+// ── MOVEMENT ─────────────────────────────────────────────
+$('new-movement-btn').addEventListener('click', () => {
+  if (!state.items.length) { toast('Bitte zuerst einen Artikel anlegen.'); return; }
+  $('movement-form').reset();
+  fillSelects();
+  $('movement-dialog').showModal();
+});
+
+$('movement-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const item = state.items.find(i=>i.id===$('move-item').value);
+  if (!item) return;
+  const type = $('move-type').value;
+  const qty  = Number($('move-qty').value);
+  const prev = Number(item.quantity||0);
+  let next = prev;
+  if (type==='in') next = prev+qty;
+  if (type==='out') next = prev-qty;
+  if (type==='adjustment') next = qty;
+  if (next < 0) { toast('Auslagerung nicht möglich – Bestand würde negativ.'); return; }
+
+  const upd = await db.from('items').update({quantity:next, updated_at:new Date().toISOString()}).eq('id',item.id);
+  if (upd.error) { toast('Fehler: '+upd.error.message); return; }
+  const mov = await db.from('movements').insert({
+    item_id: item.id, type, quantity: qty,
+    previous_quantity: prev, new_quantity: next,
+    reason: $('move-reason').value.trim()||null,
+    device_name: state.deviceName
+  });
+  if (mov.error) { toast('Fehler: '+mov.error.message); return; }
+  $('movement-dialog').close();
+  toast('Bewegung gebucht.');
+  await loadAll();
+});
+
+// ── LOCATION ─────────────────────────────────────────────
+$('new-location-btn').addEventListener('click', () => {
+  $('location-id').value=''; $('location-form').reset();
+  $('location-dialog-title').textContent='Lagerplatz anlegen';
+  $('location-dialog').showModal();
+});
+
+$('location-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const id = $('location-id').value;
+  const payload = {
+    name: $('location-name').value.trim(),
+    zone: $('location-zone').value.trim()||null,
+    capacity: Number($('location-cap').value),
+    description: $('location-desc').value.trim()||null,
+    updated_at: new Date().toISOString()
+  };
+  const res = id ? await db.from('locations').update(payload).eq('id',id) : await db.from('locations').insert(payload);
+  if (res.error) { toast('Fehler: '+res.error.message); return; }
+  $('location-dialog').close();
+  toast('Lagerplatz gespeichert.');
+  await loadAll();
+});
+
+// ── CSV EXPORT ────────────────────────────────────────────
+function exportCsv(filename, rows) {
+  if (!rows.length) { toast('Keine Daten.'); return; }
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(';'), ...rows.map(r=>headers.map(h=>`"${String(r[h]??'').replaceAll('"','""')}"`).join(';'))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download = filename; a.click();
+}
+$('export-items-btn').addEventListener('click', ()=>exportCsv('artikel.csv', state.items.map(i=>({sku:i.sku,name:i.name,category:i.category,location:locName(i.location_id),quantity:i.quantity,min_stock:i.min_stock,unit:i.unit,status:statusFor(i).label}))));
+$('export-movements-btn').addEventListener('click', ()=>exportCsv('bewegungen.csv', state.movements.map(m=>({datum:fmt.format(new Date(m.created_at)),artikel:m.items?.name||'',sku:m.items?.sku||'',typ:movLabel(m.type),menge:m.quantity,vorher:m.previous_quantity,nachher:m.new_quantity,geraet:m.device_name||'',notiz:m.reason||''}))));
+
+// ── SEED ─────────────────────────────────────────────────
+$('seed-btn').addEventListener('click', async () => {
+  if (state.items.length && !confirm('Bereits Daten vorhanden. Trotzdem Beispieldaten einfügen?')) return;
+  const locRes = await db.from('locations').insert([
+    {name:'Regal A1', zone:'A', capacity:250, description:'Kleinteile und Verbrauchsmaterial'},
+    {name:'Palette B2', zone:'B', capacity:500, description:'Wareneingang / große Gebinde'},
+    {name:'LKW 1', zone:'Fahrzeug', capacity:200, description:'Hauptfahrzeug'}
+  ]).select();
+  if (locRes.error) { toast('Fehler: '+locRes.error.message); return; }
+  const [a,b,c] = locRes.data;
+  await db.from('items').insert([
+    {sku:'KAB-50',  name:'Kabeltrommel 50m',  category:'Technik',  location_id:a.id, quantity:8,  min_stock:3,  unit:'Stk'},
+    {sku:'TISCH-01',name:'Stehtisch weiß',     category:'Mobiliar', location_id:b.id, quantity:15, min_stock:5,  unit:'Stk'},
+    {sku:'BAND-01', name:'Gaffer Tape schwarz',category:'Verbrauch',location_id:c.id, quantity:2,  min_stock:10, unit:'Rollen'},
+  ]);
+  toast('Beispieldaten eingefügt.');
+  await loadAll();
+});
+
+// ── SETUP COPY ────────────────────────────────────────────
+$('copy-sql-btn').addEventListener('click', ()=>navigator.clipboard.writeText(SCHEMA_SQL).then(()=>toast('SQL kopiert.')));
+$('refresh-btn').addEventListener('click', ()=>loadAll());
+
+// ── SEARCH EVENTS ─────────────────────────────────────────
+$('item-search').addEventListener('input', renderItems);
+$('cat-filter').addEventListener('change', renderItems);
+$('status-filter').addEventListener('change', renderItems);
+
+// ── INIT ──────────────────────────────────────────────────
+$('dash-date').textContent = new Date().toLocaleDateString('de-DE',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+$('device-label').textContent = state.deviceName;
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
